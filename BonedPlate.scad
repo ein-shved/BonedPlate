@@ -195,3 +195,58 @@ module hang(n=1, d=4, e=0.1, l=16, w=3.8, h=10, hatHole=true)
         }
     }
 }
+module __calcedTriangleBone(a, b, c, ba, ca, h)
+{
+    m = max(b, c);
+    _ba = (ba > 90) ? 180 - ba : ba;
+    _px = c * cos(_ba);
+    _py = c * sin(_ba);
+    hull() {
+        polyhedron( [ [0,0,0], [0,0,h], [a,0,0], [a,0,h], 
+                      [_px, _py, 0], [_px, _py, h] ],
+                    [ [0, 1, 3, 2], [0, 1, 5, 4], [ 2, 3, 5, 4 ],
+                      [0, 2, 4], [1, 3, 5] ]);
+    }
+}
+
+/**
+ * creates flat triangle width widh of h and
+ *  - either side of length a and angles of ba and ca degrees
+ *  - either sides of length a, b and angle ca degrees
+ *  - or sides of length a, b, c
+ *
+ * ba  _c_
+ *    |  /
+ *  a | /  b
+ *    |/
+ *    ca
+ */
+module triangleBone(a=0, b=0, c=0, ba=0, ca=0, h=1)
+{
+    assert(a>0);
+    if (ba == 0 && ca == 0) {
+        assert(b > 0 && c > 0);
+        assert(a + b > c && a + c > b && b + c > a);
+        _ba = acos ( (a*a + c*c - b*b)/(2*a*c));
+        _ca = acos ( (a*a + b*b - c*c)/(2*a*b));
+        __calcedTriangleBone(a, b, c, _ba, _ca, h);
+    } else if (ba == 0) {
+        assert (ca < 180);
+        assert (b > 0 && c == 0);
+        _c = sqrt(a*a + b*b - 2*a*b*cos(ca));
+        _ba = acos ( (a*a + _c*_c - b*b)/(2*a*_c));
+        __calcedTriangleBone(a, b, _c, _ba, ca, h);
+    } else if (ca == 0) {
+        assert (ba < 180);
+        assert (c > 0 && b == 0);
+        _b = sqrt(a*a + c*c - 2*a*c*cos(ba));
+        _ca = acos ( (a*a + c*c - b*b)/(2*a*c));
+        __calcedTriangleBone(a, _b, c, ba, _ca, h);
+    } else {
+        assert (ba + ca < 180);
+        aa = 180 - ba - ca;
+        _c = a * sin(ca) / sin(aa);
+        _b = a * sin(ba) / sin(aa);
+        __calcedTriangleBone(a, _b, _c, ba, ca, h);
+    }
+}
