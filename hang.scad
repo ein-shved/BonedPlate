@@ -6,9 +6,6 @@ h=10;
 d=4;
 ep=0.1;
 
-translate([-l -w/2,0,0.0]) {
-    bonedPlate(3,3, boltHoles=[1,1,1,1]);
-}
 module hangComplex() {
     union() {
         hang(3, hatHole=false);
@@ -86,4 +83,7 @@ module hangSimple() {
 }
 translate([l/2, l/2 + w/2, 0]){
     hangSimple();
+}
+*translate([-l -w/2,0,0.0]) {
+    bonedPlate(3,3, edgeWalls = [ [EdgeScrew], [EdgeScrew], [EdgeScrew], [EdgeScrew]]);
 }

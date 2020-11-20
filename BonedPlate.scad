@@ -1,28 +1,19 @@
+use <generic.scad>
+use <omdl/math/bitwise.scad>
 
-e = 2.71828; //Euler's number
+/* Types of edge walls */
+EdgeWall = 0;
 
-module screwHole(d=4, h=10) {
-  thread = d/2;
-  shift = d/2;
-  translate([0,0,h/2]) {
-    union() {
-      difference() {
-        union() {
-          cylinder(h=10, d=2*d, center=true, $fn=60);
-          translate([0,0,h-6]) {
-            cylinder(h=2, d1=2*d, d2=2*d + 4, center=true, $fn=60);
-          }
-        }
-        cylinder(h=h+2, d=d, center=true, $fn=20);
-      }
+EdgeHole = bitwise_lsh(1, 0);
+EdgePeg =  bitwise_lsh(1, 1);
+EdgeHigh = bitwise_lsh(1, 2);
+EdgeLow =  bitwise_lsh(1, 3);
+EdgeScrew =  bitwise_lsh(1, 4);
 
-      translate([shift,0,0]) { cube([thread, d/e, 10], center=true); }
-      translate([-shift,0,0]) { cube([thread, d/e, 10], center=true); }
-      translate([0,shift,0]) { cube([d/e, thread, 10], center=true); }
-      translate([0,-shift,0]) { cube([d/e, thread, 10], center=true); }
-    }
- }
-}
+EdgeHoleHigh = bitwise_or(EdgeHole, EdgeHigh);
+EdgePegHigh = bitwise_or(EdgePeg, EdgeHigh);
+EdgeHoleLow = bitwise_or(EdgeHole, EdgeLow);
+EdgePegLow = bitwise_or(EdgePeg, EdgeLow);
 
 module boneHole(d=4, h=10) {
   translate([0,0,h/2]) {
@@ -123,7 +114,7 @@ module skeleton(n=1, m=1, borderHoles=false,
             for (i=[hsx:hex]) {
                 for(j=[hsy:hey]) {
                     translate([i*l+w/2,j*l+w/2,0]) {
-                        screwHole(d, h);
+                        screwHole(d, h, jamb=true);
                     }
                 }
             }
@@ -131,42 +122,106 @@ module skeleton(n=1, m=1, borderHoles=false,
     }
 }
 
-module boltHoles (num, from, step, h, d, byX, w)
+function lh(p) = (bitwise_and(p, EdgeHigh) ? 2.5 :
+                 bitwise_and(p, EdgeLow) ? -1.5 : 0);
+function lhTranslate(byX, p) = ([!byX ? -lh(p) : 0, byX ? lh(p) : 0]);
+
+module edgePeg(h, d, j, p)
 {
-    for (i=[0:num]) {
-        translate ([from[0] + (byX ? i*step + w/2 : 0), 
-                    from[1] + (byX ? 0 : i*step + w/2), h/2])
-        {
-            rotate (a=90, v = [byX ? 1 : 0, byX ? 0 : 1, 0]) {
-                translate([0,0, (byX ? -w/2 : w/2)]) {
-                    cylinder(h=w+2, d=d + 0.2, center=true, $fn=30);
+    byX = j % 2 == 0;
+    dist = j > 2;
+    translate(lhTranslate(byX, p)) {
+        rotate(v=[0, (j >0 && j < 3) ? 1 : 0,0], a=180) {
+            union() {
+                translate ([0,0, -0.5]) {
+                    cylinder(h=h-1, d=d, center=true, $fn=30);
+                }
+                translate([0, 0, h/2 -0.5]) {
+                    cylinder(h=1.1, d1=d, d2=d-1, center=true, $fn=30);
                 }
             }
         }
     }
 }
+module edgeHole(w, d, j, p)
+{
+    byX = j % 2 == 0;
+    dist = j > 1;
+    translate(lhTranslate(byX,p)) {
+        cylinder(h=w+2, d=d, center=true, $fn=30);
+    }
+}
+module edgeScrew(w, d, h, j, p, diffMode)
+{
+    byX = (j % 2 == 0);
+    dist = j > 1;
+    if (diffMode) {
+        translate([0,0, (byX ? -w/2 : w/2)]) {
+            edgeHole(w, d+0.2, j, p);
+        }
+        translate([0,0, (byX ? -w/2 + 3 : w/2 - 3)]) {
+            edgeHole(w+2, d+1.6, j, p);
+        }
+    } else {
+        cube([byX ? l : h, byX ? h : l , 5], center=true);
+    }
+}
+module edgeWalls(num, from, prog, l, h, d, w, diffMode, j)
+{
+    s=len(prog);
+    byX = (j % 2 == 0);
+    dist = j > 1;
+    for (i=[0:num-1]) {
+        translate ([from[0] + (byX ? i*l + w/2 : 0),
+                    from[1] + (byX ? 0 : i*l + w/2), h/2])
+        {
+            p = prog[i % s];
+            rotate (a=90, v = [byX ? 1 : 0, byX ? 0 : 1, 0]) {
+                if (bitwise_and(p, EdgeHole) && diffMode) {
+                    translate([0,0, (byX ? -w/2 : w/2)]) {
+                        edgeHole(w, d+0.9, j, p);
+                    }
+                } else if (bitwise_and(p, EdgePeg) && !diffMode) {
+                    if (j <= 1) {
+                        translate([0, 0, byX ? w/2 : -w/2]) {
+                            edgePeg(w, d+0.6, j, p);
+                        }
+                    } else {
+                        translate([0, 0, byX ? -w*1.5 : w*1.5]) {
+                            edgePeg(w, d+0.6, j, p);
+                        }
+                    }
+                } else if (bitwise_and(p, EdgeScrew)) {
+                    edgeScrew(w, d, h, j, p, diffMode);
+                }
+            }
+        }
+    }
+}
+module edgeWallCycle(n, m, edgeWalls, d, l, w, h, diffMode)
+{
+    for (i=[0:3]) {
+        s = edgeWalls[i];
+        byX = (i % 2 == 0);
+        dist = (i > 1);
+        edgeWalls( (byX ? n : m),
+            [(byX ? l/2 : (dist ? l*n : 0)),
+             (byX ? (dist ? l*m : 0) : l/2 )],
+             s, l, h, d, w, diffMode, i);
+    }
+}
 
 module bonedPlate (n=1, m=1, borderHoles=false,
-                   boltHoles = [0, 0, 0, 0],
+                   edgeWalls = [[EdgeWall], [EdgeWall], [EdgeWall], [EdgeWall]],
                    d=4, l=16, w=3.8, h=10)
 {
     difference() {
         union() {
             skeleton(n, m, borderHoles, d, l, w, h);
             translate([0,0,h]) { cube([l*n + w, l*m + w, w/2]); }
+            edgeWallCycle(n, m, edgeWalls, d, l, w, h, false);
         }
-
-        for (i=[0:3]) {
-            s = boltHoles[i];
-            byX = (i % 2 == 0);
-            dist = (i > 1);
-            if (s > 0) {
-                boltHoles( (byX ? round(n / s) : round(m / s)),
-                    [(byX ? l/2 : (dist ? l*n : 0)), 
-                     (byX ? (dist ? l*m : 0) : l/2 )],
-                     l * s, h, d, byX, w);
-            }
-        }
+        edgeWallCycle(n, m, edgeWalls, d, l, w, h, true);
     }
 }
 
